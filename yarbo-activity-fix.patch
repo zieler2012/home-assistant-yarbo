@@ -1,0 +1,79 @@
+diff --git a/custom_components/community_yarbo/const.py b/custom_components/community_yarbo/const.py
+index a243cd2..1c18328 100644
+--- a/custom_components/community_yarbo/const.py
++++ b/custom_components/community_yarbo/const.py
+@@ -134,19 +134,30 @@ def get_activity_state(telemetry: YarboTelemetry) -> str:
+ 
+     Returns:
+         Activity state: "error", "charging", "working", "returning", "paused", or "idle"
++
++    python-yarbo >= 2026.3 exposes ``state`` as a *string* ("active"/"idle")
++    derived from ``StateMSG.working_state``, alongside ``working_state``,
++    ``on_going_recharging`` and ``planning_paused``. Comparing ``state``
++    against integers never matched, so a mowing robot always read "idle".
++    The legacy integer ``state`` codes are still honoured as a fallback.
+     """
+-    if telemetry.error_code != 0:
++    if telemetry.error_code not in (0, None):
+         return "error"
+     if telemetry.charging_status in (1, 2, 3):
+         return "charging"
+-    if telemetry.state in (1, 7, 8):
+-        return "working"
+-    if telemetry.state == 2:
+-        return "returning"
+-    if telemetry.state == 5:
++    state = telemetry.state
++    if getattr(telemetry, "planning_paused", None) or state == 5:
+         return "paused"
+-    if telemetry.state == 6:
++    if getattr(telemetry, "on_going_recharging", None) or state == 2:
++        return "returning"
++    if state == 6:
+         return "error"
++    if (
++        getattr(telemetry, "working_state", None) == 1
++        or state == "active"
++        or state in (1, 7, 8)
++    ):
++        return "working"
+     return "idle"
+ 
+ 
+diff --git a/custom_components/community_yarbo/lawn_mower.py b/custom_components/community_yarbo/lawn_mower.py
+index 5faaa92..d9f7cc9 100644
+--- a/custom_components/community_yarbo/lawn_mower.py
++++ b/custom_components/community_yarbo/lawn_mower.py
+@@ -12,6 +12,7 @@ from .const import (
+     DOMAIN,
+     HEAD_TYPE_LAWN_MOWER,
+     HEAD_TYPE_LAWN_MOWER_PRO,
++    get_activity_state,
+ )
+ from .controller import async_ensure_controller
+ from .coordinator import YarboDataCoordinator
+@@ -59,16 +60,17 @@ class YarboLawnMower(YarboEntity, LawnMowerEntity):
+         if not telemetry:
+             return None
+ 
+-        if telemetry.error_code != 0:
++        # Single source of truth — see get_activity_state for why the old
++        # integer comparison against telemetry.state never matched.
++        activity = get_activity_state(telemetry)
++        if activity == "error":
+             return LawnMowerActivity.ERROR
+-        if telemetry.charging_status in (1, 2, 3):
+-            return LawnMowerActivity.DOCKED
+-        if telemetry.state in (1, 7, 8):
++        if activity == "working":
+             return LawnMowerActivity.MOWING
+-        if telemetry.state == 5:
++        if activity == "paused":
+             return LawnMowerActivity.PAUSED
+-        if telemetry.state == 2:
+-            return LawnMowerActivity.DOCKED
++        if activity == "returning":
++            return LawnMowerActivity.RETURNING
+         return LawnMowerActivity.DOCKED
+ 
+     async def async_start_mowing(self) -> None:
