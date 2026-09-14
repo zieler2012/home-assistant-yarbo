@@ -134,19 +134,30 @@ def get_activity_state(telemetry: YarboTelemetry) -> str:
 
     Returns:
         Activity state: "error", "charging", "working", "returning", "paused", or "idle"
+
+    python-yarbo >= 2026.3 exposes ``state`` as a *string* ("active"/"idle")
+    derived from ``StateMSG.working_state``, alongside ``working_state``,
+    ``on_going_recharging`` and ``planning_paused``. Comparing ``state``
+    against integers never matched, so a mowing robot always read "idle".
+    The legacy integer ``state`` codes are still honoured as a fallback.
     """
-    if telemetry.error_code != 0:
+    if telemetry.error_code not in (0, None):
         return "error"
     if telemetry.charging_status in (1, 2, 3):
         return "charging"
-    if telemetry.state in (1, 7, 8):
-        return "working"
-    if telemetry.state == 2:
-        return "returning"
-    if telemetry.state == 5:
+    state = telemetry.state
+    if getattr(telemetry, "planning_paused", None) or state == 5:
         return "paused"
-    if telemetry.state == 6:
+    if getattr(telemetry, "on_going_recharging", None) or state == 2:
+        return "returning"
+    if state == 6:
         return "error"
+    if (
+        getattr(telemetry, "working_state", None) == 1
+        or state == "active"
+        or state in (1, 7, 8)
+    ):
+        return "working"
     return "idle"
 
 

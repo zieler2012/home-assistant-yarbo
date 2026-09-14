@@ -12,6 +12,7 @@ from .const import (
     DOMAIN,
     HEAD_TYPE_LAWN_MOWER,
     HEAD_TYPE_LAWN_MOWER_PRO,
+    get_activity_state,
 )
 from .controller import async_ensure_controller
 from .coordinator import YarboDataCoordinator
@@ -59,16 +60,17 @@ class YarboLawnMower(YarboEntity, LawnMowerEntity):
         if not telemetry:
             return None
 
-        if telemetry.error_code != 0:
+        # Single source of truth — see get_activity_state for why the old
+        # integer comparison against telemetry.state never matched.
+        activity = get_activity_state(telemetry)
+        if activity == "error":
             return LawnMowerActivity.ERROR
-        if telemetry.charging_status in (1, 2, 3):
-            return LawnMowerActivity.DOCKED
-        if telemetry.state in (1, 7, 8):
+        if activity == "working":
             return LawnMowerActivity.MOWING
-        if telemetry.state == 5:
+        if activity == "paused":
             return LawnMowerActivity.PAUSED
-        if telemetry.state == 2:
-            return LawnMowerActivity.DOCKED
+        if activity == "returning":
+            return LawnMowerActivity.RETURNING
         return LawnMowerActivity.DOCKED
 
     async def async_start_mowing(self) -> None:
