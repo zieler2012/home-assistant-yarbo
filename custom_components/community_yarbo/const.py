@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from .models import YarboTelemetry
+from .telemetry import get_nested_raw_value
 
 DOMAIN = "community_yarbo"
 
@@ -146,10 +147,18 @@ def get_activity_state(telemetry: YarboTelemetry) -> str:
     if telemetry.charging_status in (1, 2, 3):
         return "charging"
     state = telemetry.state
+    # The firmware reports on_going_recharging as a stage, not a flag: 2 while
+    # a low-battery pause drives the robot home, 4 once it is on the pad. Both
+    # arrive with planning_paused set, so this must be checked before
+    # "paused" or the drive home reads as paused. Stage 4 without charging
+    # (battery full, waiting to resume) stays "paused".
+    recharge_stage = get_nested_raw_value(telemetry, "StateMSG", "on_going_recharging")
+    if recharge_stage is None:
+        recharge_stage = getattr(telemetry, "on_going_recharging", None)
+    if (recharge_stage and recharge_stage != 4) or state == 2:
+        return "returning"
     if getattr(telemetry, "planning_paused", None) or state == 5:
         return "paused"
-    if getattr(telemetry, "on_going_recharging", None) or state == 2:
-        return "returning"
     if state == 6:
         return "error"
     if (
