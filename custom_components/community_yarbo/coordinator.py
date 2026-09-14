@@ -1076,7 +1076,11 @@ class YarboDataCoordinator(DataUpdateCoordinator[YarboTelemetry]):
         # transport's topic-matched waiter instead. Its queue is registered
         # synchronously on entry, and _request_data_feedback yields once
         # (asyncio.sleep(0)) before publishing, so the reply cannot be missed.
-        transport = getattr(getattr(self.client, "_local", None), "_transport", None)
+        # The integration holds a YarboLocalClient, which owns the transport
+        # directly; YarboClient wraps one as _local.
+        transport = getattr(self.client, "_transport", None) or getattr(
+            getattr(self.client, "_local", None), "_transport", None
+        )
         wait_for_message = getattr(transport, "wait_for_message", None)
         if callable(wait_for_message):
             msg = await wait_for_message(
