@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
-from homeassistant.components.lawn_mower import LawnMowerActivity, LawnMowerEntity
+from homeassistant.components.lawn_mower import (
+    LawnMowerActivity,
+    LawnMowerEntity,
+    LawnMowerEntityFeature,
+)
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -40,6 +44,14 @@ class YarboLawnMower(YarboEntity, LawnMowerEntity):
     """
 
     _attr_translation_key = "mower"
+    # Without this HA sees supported_features=0, hides the start/pause/dock
+    # controls on dashboards and rejects lawn_mower.* service calls, even
+    # though async_start_mowing / async_pause / async_dock are implemented.
+    _attr_supported_features = (
+        LawnMowerEntityFeature.START_MOWING
+        | LawnMowerEntityFeature.PAUSE
+        | LawnMowerEntityFeature.DOCK
+    )
 
     def __init__(self, coordinator: YarboDataCoordinator) -> None:
         super().__init__(coordinator, "mower")

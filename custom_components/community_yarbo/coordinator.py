@@ -1070,6 +1070,28 @@ class YarboDataCoordinator(DataUpdateCoordinator[YarboTelemetry]):
         waiter = getattr(self.client, "wait_for_feedback", None)
         if callable(waiter):
             return await waiter(topic, timeout=timeout)
+        # python-yarbo >= 2026.3 exposes neither waiter on the client, so every
+        # data_feedback request (plans, currents, speed, odometer, ...) returned
+        # None instantly while the robot's reply arrived ~25 ms later. Use the
+        # transport's topic-matched waiter instead. Its queue is registered
+        # synchronously on entry, and _request_data_feedback yields once
+        # (asyncio.sleep(0)) before publishing, so the reply cannot be missed.
+        transport = getattr(getattr(self.client, "_local", None), "_transport", None)
+        wait_for_message = getattr(transport, "wait_for_message", None)
+        if callable(wait_for_message):
+            msg = await wait_for_message(
+                timeout=timeout,
+                feedback_leaf="data_feedback",
+                command_name=topic,
+            )
+            if not isinstance(msg, dict):
+                return None
+            # Match python-yarbo's own _request_data_feedback unwrapping when the
+            # payload carries a dict (e.g. read_all_plan -> {"data": [plans]});
+            # keep the whole message for scalar replies so callers using
+            # response.get("data", response) still find the value.
+            data = msg.get("data")
+            return data if isinstance(data, dict) else msg
         _LOGGER.debug("Client does not support data_feedback waits for %s", topic)
         return None
 
